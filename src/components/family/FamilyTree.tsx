@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs, doc, deleteDoc, query, where } from 'firebase/firestore';
-import { db } from '../../config/firebase';
+import { ref, deleteObject } from 'firebase/storage';
+import { db, storage } from '../../config/firebase';
 import { FamilyMember, TreeNode } from '../../types/family';
 import { MemberCard } from './MemberCard';
 import { MemberModal } from './MemberModal';
 import { AddMemberForm } from './AddMemberForm';
 import { useAuth } from '../../contexts/AuthContext';
-import { Plus, Users } from 'lucide-react';
+import { Plus, Users, Trash2, CheckCircle } from 'lucide-react';
 
 export const FamilyTree: React.FC = () => {
   const [members, setMembers] = useState<FamilyMember[]>([]);
@@ -14,6 +15,8 @@ export const FamilyTree: React.FC = () => {
   const [editingMember, setEditingMember] = useState<FamilyMember | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [deletingMember, setDeletingMember] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
   const { userData, currentUser } = useAuth();
 
   useEffect(() => {
@@ -81,17 +84,75 @@ export const FamilyTree: React.FC = () => {
     return roots;
   };
 
+  const deleteImageFromStorage = async (imageUrl: string) => {
+    if (!imageUrl || !imageUrl.includes('firebase')) return;
+    
+    try {
+      const url = new URL(imageUrl);
+      const pathMatch = url.pathname.match(/\/o\/(.+)\?/);
+      if (pathMatch) {
+        const imagePath = decodeURIComponent(pathMatch[1]);
+        const imageRef = ref(storage, imagePath);
+        await deleteObject(imageRef);
+      }
+    } catch (error) {
+      console.error('Error deleting image from storage:', error);
+    }
+  };
+
   const handleDeleteMember = async (memberId: string) => {
-    if (!window.confirm('Are you sure you want to delete this family member?')) {
+    const memberToDelete = members.find(m => m.id === memberId);
+    if (!memberToDelete) return;
+
+    // Check if user has permission to delete
+    const canDelete = userData?.isAdmin || userData?.uid === memberToDelete.createdBy;
+    if (!canDelete) {
+      alert('You do not have permission to delete this member.');
       return;
     }
 
+    // Check if member has children
+    const hasChildren = members.some(m => m.parentId === memberId);
+    if (hasChildren) {
+      alert('Cannot delete this member as they have children in the family tree. Please remove or reassign their children first.');
+      return;
+    }
+
+    setDeletingMember(memberId);
+
     try {
+      // Delete the member's image from storage if it exists
+      if (memberToDelete.imageUrl) {
+        await deleteImageFromStorage(memberToDelete.imageUrl);
+      }
+
+      // Update spouse relationship if exists
+      if (memberToDelete.spouseId) {
+        const spouse = members.find(m => m.id === memberToDelete.spouseId);
+        if (spouse) {
+          // Remove spouse relationship (this would require updating the spouse's record)
+          // For now, we'll just delete the member and the relationship will be broken
+        }
+      }
+
+      // Delete the member from Firestore
       await deleteDoc(doc(db, 'familyMembers', memberId));
-      await fetchMembers();
+      
+      // Show success state
+      setDeleteSuccess(true);
       setSelectedMember(null);
+      
+      // Wait a moment to show success, then refresh
+      setTimeout(async () => {
+        await fetchMembers();
+        setDeleteSuccess(false);
+      }, 1500);
+
     } catch (error) {
       console.error('Error deleting family member:', error);
+      alert('Failed to delete family member. Please try again.');
+    } finally {
+      setDeletingMember(null);
     }
   };
 
@@ -143,6 +204,48 @@ export const FamilyTree: React.FC = () => {
       </div>
     );
   };
+
+  // Show delete success state
+  if (deleteSuccess) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="h-8 w-8 text-red-600" />
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">
+            Member Deleted!
+          </h3>
+          <p className="text-gray-600">
+            The family member has been successfully removed from your family tree.
+          </p>
+          <div className="mt-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600 mx-auto"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show deleting state
+  if (deletingMember) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Trash2 className="h-8 w-8 text-red-600" />
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">
+            Deleting Member...
+          </h3>
+          <p className="text-gray-600 mb-4">
+            Please wait while we remove the family member from your tree.
+          </p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto"></div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

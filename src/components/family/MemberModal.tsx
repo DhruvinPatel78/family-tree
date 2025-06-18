@@ -43,6 +43,12 @@ export const MemberModal: React.FC<MemberModalProps> = ({
 
   const canEdit = userData?.isAdmin || userData?.uid === member.createdBy;
 
+  const handleDelete = () => {
+    if (window.confirm(`Are you sure you want to delete ${member.name}? This action cannot be undone.`)) {
+      onDelete(member.id);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
@@ -137,7 +143,7 @@ export const MemberModal: React.FC<MemberModalProps> = ({
                 <span>Edit</span>
               </button>
               <button
-                onClick={() => onDelete(member.id)}
+                onClick={handleDelete}
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2"
               >
                 <Trash2 className="h-4 w-4" />

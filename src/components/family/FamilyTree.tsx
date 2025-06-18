@@ -32,8 +32,7 @@ export const FamilyTree: React.FC = () => {
 
     try {
       const q = query(
-        collection(db, 'familyMembers'),
-        where('createdBy', '==', currentUser.uid)
+        collection(db, 'familyMembers')
       );
       const querySnapshot = await getDocs(q);
       const membersData = querySnapshot.docs.map(doc => ({
